@@ -1,1 +1,3 @@
-Lets ColorOS probe Google through the local HTTP proxy at 127.0.0.1:7890. Only real HTTP 204 yields success; other outcomes retain original detection. Scope: com.oplus.battery and com.oplus.athena; hooks run only in Athena. Firmware-specific Xposed API 82 module.
+# ColorOS GMS Probe Fix
+
+模块目录摘要使用无扩展名的 [SUMMARY](SUMMARY)。完整介绍见[中文说明](README.md)或 [English](README.en.md)。

@@ -1,0 +1,1 @@
+ColorOS Google 可达性检测修复：通过本地 Mihomo HTTP/mixed 代理执行真实 HTTP 204 探测的 LSPosed / Xposed API 82 模块；依赖特定固件，保留原厂限制策略逻辑。

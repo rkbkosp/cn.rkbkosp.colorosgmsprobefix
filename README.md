@@ -1,87 +1,68 @@
-# ColorOS GMS Probe Fix
+# ColorOS GMS Probe Fix：ColorOS Google 可达性检测修复模块
 
-[简体中文](README.zh-CN.md)
+简体中文 | [English](README.en.md)
 
-An Xposed API 82 / LSPosed compatibility module that lets ColorOS perform a **real Google connectivity probe through the local HTTP proxy**, while retaining the vendor's normal restriction/unrestriction logic. Application ID and namespace: `cn.rkbkosp.colorosgmsprobefix`.
+ColorOS GMS Probe Fix 是面向 **ColorOS 厂商 Google 检测逻辑**的 **LSPosed / Xposed API 82 模块**，让检测经本地 Mihomo HTTP/mixed 代理完成真实的 HTTP 204 探测，再由原控制器处理 GMS 限制与解除，主要解决透明代理用户在规则代理模式下，系统不能正确识别代理运行情况，以此判断用户无法连通 GMS，并阻止 GMS 联网的问题。
 
-- [Source](https://github.com/rkbkosp/cn.rkbkosp.colorosgmsprobefix)
-- [Releases](https://github.com/rkbkosp/cn.rkbkosp.colorosgmsprobefix/releases)
-- [LSPosed/Xposed Modules Repo catalog](https://github.com/Xposed-Modules-Repo/cn.rkbkosp.colorosgmsprobefix): [submission #2024](https://github.com/Xposed-Modules-Repo/submission/issues/2024) approved and repository created. An installable catalog listing requires a signed APK release; repository creation alone is not listing verification.
+**模块依赖特定固件实现，不保证解决所有 Google Play / Google 服务联网问题。已在 ColorOS 16/17  Oneplus Ace 3 和 OPPO Find X9 Ultra 上实机测试通过，但不能保证其他机型仍能生效**
 
-## Behavior and boundaries
+[下载 APK](https://github.com/rkbkosp/cn.rkbkosp.colorosgmsprobefix/releases/latest) · [模块目录仓库](https://github.com/Xposed-Modules-Repo/cn.rkbkosp.colorosgmsprobefix) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/rkbkosp/cn.rkbkosp.colorosgmsprobefix/issues) · [MIT 许可证](LICENSE)
 
-The module installs hooks only in the `com.oplus.athena` process. Select **both `com.oplus.battery` and `com.oplus.athena`** in LSPosed; shared-process loading is deduplicated. Do not select Android/System Framework.
+## 使用前必读
 
-It hooks `com.oplus.battery.restrictdynamicfeature.google.NetworkDetector.a(Context,int)` (the integer is a retry count, not a timeout). With an active system network and a listening HTTP proxy at **`127.0.0.1:7890`**, it reads the firmware's RUS address list through helper `h6.a` and probes those addresses using `Proxy.Type.HTTP`. If configuration lookup fails or the list is empty, the sampled firmware defaults are used:
+- 需要已安装且正常工作的 LSPosed，并支持 **Xposed API 82/legacy**。本模块没有桌面启动入口或设置界面，请通过 LSPosed 管理。
+- 需要 Athena 可访问的本地 **HTTP/mixed `127.0.0.1:7890`** 代理。端口不可在界面中修改。
+- 作用域同时选择 **`com.oplus.battery` 和 `com.oplus.athena`**，不要选择 Android/系统框架或 Google 应用。
+- 模块运行在高权限厂商进程内。启用前备份重要数据，并准备适合自己设备的模块停用/救援方法。
+
+## 下载与安装
+
+1. 从 [Releases](https://github.com/rkbkosp/cn.rkbkosp.colorosgmsprobefix/releases/latest) 的资源列表下载 `ColorOSGmsProbeFix-*.apk`，不要下载源码 ZIP 作为安装包。同版本 `SHA256SUMS` 可用于核对文件。
+2. 安装 APK，在 LSPosed 启用 **ColorOS GMS Probe Fix**，重新确认上述两个作用域，然后重启设备。
+3. 确认本地 HTTP/mixed 代理可用，检查下文日志，并在自己的设备上验证 Google 访问、网络切换与完整重启后的表现。重启是安装步骤，不表示本公开版本已通过整机重启验收。
+
+## 功能与边界
+
+只在 **`com.oplus.athena` 进程**安装 hook。LSPosed 作用域需要同时选择 **`com.oplus.battery` 和 `com.oplus.athena`**；共享进程重复加载会去重。不要选择 Android/系统框架。
+
+模块 hook `com.oplus.battery.restrictdynamicfeature.google.NetworkDetector.a(Context,int)`，第二个参数是重试次数而非超时。当系统存在活动网络且 **`127.0.0.1:7890`** HTTP 代理接受连接时，通过固件 RUS helper **`h6.a`** 读取地址列表，使用 `Proxy.Type.HTTP` 请求原地址。配置读取失败或列表为空时，使用提取固件中的默认地址：
 
 - `https://www.google.com/generate_204`
 - `http://www.google.com/gen_204`
 
-Only an actual **HTTP 204** produces the corresponding Wi-Fi/mobile success result. Connection and read timeouts are 3 seconds each; redirects and response caching are disabled. TLS certificate verification remains intact. HTTP 200, redirects, unavailable proxy, unsuccessful probes, and internal hook errors do not manufacture success: the original detector runs instead.
+只有实际收到 **HTTP 204** 才返回对应 Wi-Fi/移动网络成功枚举。连接、读取超时各 3 秒，不跟随重定向、不使用响应缓存，**不修改 TLS 证书验证**。HTTP 200、重定向、代理不可用、探测失败或 hook 内部异常都不会伪造成功，而是继续原厂检测。
 
-This uses Mihomo's HTTP/mixed port **7890**, not its **TPROXY port 7895**. Other applications may continue using TPROXY. A different HTTP port requires changing the source port constant and rebuilding.
+探测显式使用 Mihomo 的 HTTP/mixed **7890** 端口，**不是 TPROXY 7895**。其他应用仍可使用 TPROXY。更换 HTTP 端口需要修改源码端口常量并重新构建。
 
-After capturing the original Google restriction controller's Handler, the module checks local proxy readiness first after 10 seconds, then every 30 seconds. A transition to ready queues the original controller's `R(long,int)` with `R(0L,1)`. Failed detection gets at most three readiness-triggered attempts in that cycle; success stops retries while readiness monitoring continues for proxy restart. Short outages/restarts under 30 seconds can be missed. Original network-change handling remains active.
+捕获原 Google 限制控制器的 Handler 后，首次在 10 秒后检查本地代理就绪状态，此后每 30 秒检查一次。代理从不可用变为就绪时，通过原控制器 `R(long,int)` 的 `R(0L,1)` 排入正常检测队列；该周期内失败时最多尝试三次就绪补测，成功后停止补测，但继续观察代理重启。持续不足 30 秒的停止/重启可能漏检，原系统网络变化事件仍继续工作。
 
-Successful detection follows the vendor controller's normal policy update path. The module does not hook policy setters, directly edit BPF maps, fake a VPN, force unconditional success, or bypass the GMS switch, configuration, network checks, or HTTP 204 condition.
+成功检测由原控制器自然更新限制策略。模块不 hook 策略设置方法、不直接编辑 BPF 表、不伪造 VPN、不无条件成功，也不绕过 GMS 开关、配置启用判断、网络条件或 HTTP 204 要求。
 
-## Compatibility and evidence limits
+## 排查与恢复
 
-The imported analysis identifies the sample as **PMA110 / ColorOS V17.0.0 / Android 17**, with `Battery.apk` SHA-256:
+- **找不到 hook 日志：** 确认模块启用、两个作用域正确且已经重启，查找 `installed NetworkDetector.a(Context,int)`。出现 `firmware signature mismatch or hook failure` 时，需要重新核对固件实现。
+- **代理未就绪：** 检查 `proxy not ready; continue original detector`，确认监听是 HTTP/mixed `127.0.0.1:7890`，且 Athena 能访问。
+- **探测未成功：** 查找 `probe response=204` 与 `real HTTP 204 via Mihomo; Google detection succeeds`。HTTP 200/重定向不满足成功条件；失败时回到原检测。
+- **代理晚于系统启动：** 检查 `controller captured; proxy readiness recheck enabled` 和 `queued original controller check`。出现 `readiness hook unavailable` 或 `controller capture failed` 时，补测不可视为已工作；原有网络检测仍可能运行。
+- **系统不稳定或无法开机：** 能进入系统时停用模块并重启；否则使用事先准备的设备/框架救援方法，普通 LSPosed 界面可能不可用。
 
-```text
-b12a0d3466e20c0d3001f844c47a74a36c45422d413452e615f1678d1fe99030
-```
+反馈时提供设备型号、完整 ROM/Android 版本、是否为移植 ROM、LSPosed/模块版本、作用域、代理端口和脱敏日志，并区分 Athena 重启与整机重启，见[贡献指南](CONTRIBUTING.md)。
 
-These are attributions from the original record, not a newly established device identity. The surrounding maintenance workspace concerns an Ace3 port; it does not establish that this public release was tested on an Ace3 or on a stock PMA110.
+204 日志不等于 Google Play 界面访问成功。成功探测后限制仍存在时，应排查厂商策略持久化/同步，而不是添加无条件成功 hook。策略已清除但仍无法联网时，请分别检查代理路由、IPv6 和 DNS。
 
-The **2026-10-02 archival evidence for private version 0.2** records successful hook installation in Athena, real proxy HTTP 204, `RESULT_WIFI_SUCCESS`, a queued readiness recheck, `google_restric_info` changing from 1 to 0, and both recorded network restriction BPF maps changing from three entries to zero. Only Athena was restarted; there was **no full-device reboot acceptance**, and **Google Play UI access was not confirmed**. The complete boot-before-proxy-start scenario was not directly reproduced.
+恢复原检测实现：在 LSPosed 停用模块并重启。这不承诺恢复到此前的限制策略快照，策略状态由原控制器管理。
 
-Version **0.2.1 (versionCode 3)** changes public packaging/build/release identity, not runtime behavior. The archival observations are **not device acceptance of the newly packaged release**. Other ROMs, vendor APK revisions, and system updates need fresh method/configuration review and device validation. Private logs, vendor decompiled source, original test APKs, and device dumps are not published in this repository.
+## 隐私、风险与免责声明
 
-## Install, migrate, and recover
+运行日志记录响应/状态、hook/就绪事件及错误，分享前请脱敏。探测经本地代理发送网络请求，代理运营方及其上游可按配置观察流量。本项目不额外提供遥测或日志上传服务。
 
-1. Have a working LSPosed installation and Mihomo HTTP/mixed listener at `127.0.0.1:7890`, reachable from Athena. Keep an independent recovery path.
-2. Disable the old **ColorOSGmsUnblock** module; do not enable both approaches together.
-3. Disable and uninstall the private **`dev.local.colorosgmsprobe`** build before installing this public APK. Both the package ID and signing identity changed, so this is not an in-place update; LSPosed enablement and scope must be set again.
-4. Install the release APK, enable ColorOS GMS Probe Fix, select only `com.oplus.battery` and `com.oplus.athena`, then reboot. Reboot is an installation instruction, not a claim that full-reboot acceptance has already passed.
-5. Check LSPosed logs for `installed NetworkDetector.a(Context,int)`, `probe response=204`, and `real HTTP 204 via Mihomo; Google detection succeeds`. Validate your own Google access, Wi-Fi/mobile transitions, and restriction state.
+模块运行在具有高权限的厂商进程内。不兼容 hook、代理故障或固件变化可能影响网络与进程稳定性。项目**按现状提供**，不保证兼容或可用；启用前请确保设备异常时能停用。另见 [SECURITY.md](SECURITY.md) 与 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-A 204 log is not proof of Google Play UI success. If restriction state remains after a successful probe, investigate vendor policy persistence/synchronization instead of forcing success. If policies are clear but traffic still fails, inspect proxy routing, IPv6 and DNS separately.
+## 许可证
 
-To recover the original detection implementation, disable the module in LSPosed and reboot. This does not promise restoration of an earlier restriction policy snapshot; the original controller manages its policy state.
+MIT，Copyright © 2026 rkbkosp，见 [LICENSE](LICENSE)。分发时保留版权声明和许可证；许可证不提供担保或责任承诺。
 
-## Build and public release
+ColorOS、OPPO、Google 等名称属于各自权利人的商标。本项目独立开发，与上述组织无关联，未经其授权或背书。
 
-Requirements: **JDK 17**, Android SDK Platform **35**, Build Tools **35.0.0**. The project pins **AGP 8.7.3** and **Gradle 8.9**. Xposed API 82 is `compileOnly`, not bundled in the APK.
+第三方构建组件：Xposed API（`de.robv.android.xposed:api:82`，Apache License 2.0）仅用于编译期引用；Gradle wrapper 为 Apache License 2.0。公开源码不包含厂商反编译实现或私有证据。
 
-```sh
-./gradlew :app:assembleDebug :app:assembleRelease
-```
-
-Release builds are **unsigned by default**. The public release workflow uses the existing PKCS#12 identity (alias `rkbkosp`), not a newly generated key. Configure repository Actions secrets:
-
-- `GMS_PROBE_KEYSTORE_BASE64`: base64-encoded PKCS#12 keystore.
-- `GMS_PROBE_KEYSTORE_PASSWORD`: its password.
-
-Never commit either secret or the keystore. The signed GitHub workflow must verify this APK signer certificate SHA-256 before publication:
-
-```text
-59ea4ac3a16001cf66899275068c39c4ae5fbeab74537305a8bb7f5f51063263
-```
-
-Tags use `versionCode-versionName`; this release is **`3-0.2.1`**. A signed APK and SHA-256 checksum belong on the matching GitHub Release. GitHub publication and catalog approval are distinct; a source URL or catalog target alone does not prove either has completed. Build reproducibility here means pinned build inputs and a documented build path, not a claim of demonstrated bit-for-bit identical APKs.
-
-## Privacy, risks, and disclaimer
-
-Runtime logs cover response/status, hook/readiness events and errors; sanitize them before sharing. Probes send network requests through the configured local proxy, whose operator and upstreams can observe traffic according to their configuration. This project does not add an analytics or log-upload service.
-
-The module runs inside a privileged vendor process. Incompatible hooks, proxy failures, or firmware changes can affect connectivity or process stability. It is provided **as is**, without warranty or guaranteed compatibility; make sure you can disable it if the device becomes unstable. See [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## License
-
-MIT, copyright © 2026 rkbkosp; see [LICENSE](LICENSE). Retain the copyright and license notices when redistributing. No warranty or liability is provided under the license.
-
-ColorOS, OPPO, Google and other names are trademarks of their respective owners. This independent project is not affiliated with, endorsed by, or authorized by those organizations.
-
-Third-party build components: Xposed API (`de.robv.android.xposed:api:82`, Apache License 2.0) is referenced at compile time only; the Gradle wrapper is Apache License 2.0. Vendor decompiled implementation/evidence is not included in the public source distribution.
