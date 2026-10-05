@@ -2,28 +2,24 @@
 
 [简体中文](README.md) | English
 
-ColorOS GMS Probe Fix is an **LSPosed / Xposed API 82 module** for ColorOS vendor Google detection. It runs a real HTTP 204 probe through a local Mihomo HTTP/mixed proxy and leaves GMS restriction policy updates to the original controller.
+ColorOS GMS Probe Fix is an **LSPosed / Xposed API 82 module** for ColorOS vendor Google detection. It runs a real HTTP 204 probe through a local Mihomo HTTP/mixed proxy and leaves GMS restriction policy updates to the original controller. It primarily addresses a problem for transparent proxy users in rule-based proxy mode: the system fails to recognize that the proxy is running, concludes that GMS is unreachable, and blocks GMS network access.
 
-**This module depends on specific firmware internals. It does not guarantee a fix for every Google Play or Google services connectivity problem. Full device acceptance of the public package has not been established; see the evidence limits below.**
+**This module depends on specific firmware internals. It does not guarantee a fix for every Google Play or Google services connectivity problem. Device testing has passed on the OnePlus Ace 3 and OPPO Find X9 Ultra with ColorOS 16/17, but effectiveness on other models is not guaranteed.**
 
 [Download APK](https://github.com/rkbkosp/cn.rkbkosp.colorosgmsprobefix/releases/latest) · [Module catalog repository](https://github.com/Xposed-Modules-Repo/cn.rkbkosp.colorosgmsprobefix) · [Changelog](CHANGELOG.md) · [Report an issue](https://github.com/rkbkosp/cn.rkbkosp.colorosgmsprobefix/issues) · [MIT license](LICENSE)
 
 ## Before you install
 
-- A working LSPosed implementation supporting **Xposed API 82** is required. There is no launcher entry or settings screen; manage the module in LSPosed.
-- Athena must be able to reach a local **HTTP/mixed proxy at `127.0.0.1:7890`**. A TPROXY-only listener is insufficient; there is no port setting in the UI.
+- A working LSPosed implementation supporting **Xposed API 82 / legacy** is required. There is no launcher entry or settings screen; manage the module in LSPosed.
+- Athena must be able to reach a local **HTTP/mixed proxy at `127.0.0.1:7890`**. There is no port setting in the UI.
 - Select **both `com.oplus.battery` and `com.oplus.athena`**. Do not select Android/System Framework or Google apps.
-- The build minimum is **Android 9 / API 28**, not a promise of compatibility with every Android 9+ device. Vendor methods, configuration and controller internals must match.
 - Hooks run in a privileged vendor process. Back up important data and prepare a device-appropriate way to disable the module or recover before enabling it.
 
 ## Download and installation
 
 1. Download `ColorOSGmsProbeFix-*.apk` from the assets on [Releases](https://github.com/rkbkosp/cn.rkbkosp.colorosgmsprobefix/releases/latest). The source ZIP is not an installable APK. Use that release's `SHA256SUMS` to check the file if needed.
-2. Disable the old **ColorOSGmsUnblock** module. If installed, disable and uninstall the private **`dev.local.colorosgmsprobe`** package first: both package and signing identities changed, so this is not an in-place update.
-3. Install the APK, enable **ColorOS GMS Probe Fix** in LSPosed, set the two scopes above again, and reboot.
-4. Ensure the local HTTP/mixed proxy is available, check the logs below, and validate Google access, network transitions and full reboots on your own device. Rebooting is an installation step, not a claim of completed full-reboot acceptance.
-
-Application ID: `cn.rkbkosp.colorosgmsprobefix`. Version `0.2.1` (versionCode `3`, tag `3-0.2.1`) has APK and checksum assets on the [source Release](https://github.com/rkbkosp/cn.rkbkosp.colorosgmsprobefix/releases/tag/3-0.2.1) and [catalog Release](https://github.com/Xposed-Modules-Repo/cn.rkbkosp.colorosgmsprobefix/releases/tag/3-0.2.1). Publication does not establish device compatibility.
+2. Install the APK, enable **ColorOS GMS Probe Fix** in LSPosed, set the two scopes above again, and reboot.
+3. Ensure the local HTTP/mixed proxy is available, check the logs below, and validate Google access, network transitions and full reboots on your own device. Rebooting is an installation step, not a claim of completed full-reboot acceptance.
 
 ## Behavior and boundaries
 
@@ -42,20 +38,6 @@ After capturing the original Google restriction controller's Handler, the module
 
 Successful detection follows the vendor controller's normal policy update path. The module does not hook policy setters, directly edit BPF maps, fake a VPN, force unconditional success, or bypass the GMS switch, configuration, network checks, or HTTP 204 condition.
 
-## Compatibility and evidence limits
-
-The imported analysis identifies the sample as **PMA110 / ColorOS V17.0.0 / Android 17**, with `Battery.apk` SHA-256:
-
-```text
-b12a0d3466e20c0d3001f844c47a74a36c45422d413452e615f1678d1fe99030
-```
-
-These are attributions from the original record, not a newly established device identity. The surrounding maintenance workspace concerns an Ace3 port; it does not establish that this public release was tested on an Ace3 or on a stock PMA110.
-
-The **2026-10-02 archival evidence for private version 0.2** records successful hook installation in Athena, real proxy HTTP 204, `RESULT_WIFI_SUCCESS`, a queued readiness recheck, `google_restric_info` changing from 1 to 0, and both recorded network restriction BPF maps changing from three entries to zero. Only Athena was restarted; there was **no full-device reboot acceptance**, and **Google Play UI access was not confirmed**. The complete boot-before-proxy-start scenario was not directly reproduced.
-
-Version **0.2.1 (versionCode 3)** changes public packaging/build/release identity, not runtime behavior. The archival observations are **not device acceptance of the newly packaged release**. Other ROMs, vendor APK revisions, and system updates need fresh method/configuration review and device validation. Private logs, vendor decompiled source, original test APKs, and device dumps are not published in this repository.
-
 ## Troubleshooting and recovery
 
 - **No hook log:** confirm enablement, both scopes and a reboot. Look for `installed NetworkDetector.a(Context,int)`; `firmware signature mismatch or hook failure` calls for a fresh firmware review.
@@ -69,34 +51,6 @@ For reports, include device model, exact ROM/Android build, whether it is a port
 A 204 log is not proof of Google Play UI success. If restriction state remains after a successful probe, investigate vendor policy persistence/synchronization instead of forcing success. If policies are clear but traffic still fails, inspect proxy routing, IPv6 and DNS separately.
 
 To recover the original detection implementation, disable the module in LSPosed and reboot. This does not promise restoration of an earlier restriction policy snapshot; the original controller manages its policy state.
-
-## Build and public release
-
-Requirements: **JDK 17**, Android SDK Platform **35**, Build Tools **35.0.0**. The project pins **AGP 8.7.3** and **Gradle 8.9**. Xposed API 82 is `compileOnly`, not bundled in the APK.
-
-```sh
-./gradlew :app:assembleDebug :app:assembleRelease
-```
-
-<details>
-<summary>Maintainers: signing, releases and catalog synchronization</summary>
-
-Release builds are **unsigned by default**. The public release workflow uses the existing PKCS#12 identity (alias `rkbkosp`), not a newly generated key. Configure repository Actions secrets:
-
-- `GMS_PROBE_KEYSTORE_BASE64`: base64-encoded PKCS#12 keystore.
-- `GMS_PROBE_KEYSTORE_PASSWORD`: its password.
-
-Never commit either secret or the keystore. The signed GitHub workflow must verify this APK signer certificate SHA-256 before publication:
-
-```text
-59ea4ac3a16001cf66899275068c39c4ae5fbeab74537305a8bb7f5f51063263
-```
-
-Tags use `versionCode-versionName`; this release is **`3-0.2.1`**. The signed APK and SHA-256 checksum are attached to the matching GitHub Release. Use a new tag matching the build configuration for a new version; do not republish the old tag. Build reproducibility here means pinned build inputs and a documented build path, not a claim of demonstrated bit-for-bit identical APKs.
-
-The catalog repository description is the module name: keep `ColorOS GMS Probe Fix`. Put the short description in extensionless [`SUMMARY`](SUMMARY) and the full description in `README.md`, as required by the [official submission guide](https://github.com/Xposed-Modules-Repo/submission/blob/master/README.md). Source and catalog repositories are separate; merging a source PR does not synchronize catalog documentation. Use absolute source-repository links in catalog copies.
-
-</details>
 
 ## Privacy, risks, and disclaimer
 
