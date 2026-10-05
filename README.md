@@ -6,7 +6,7 @@ An Xposed API 82 / LSPosed compatibility module that lets ColorOS perform a **re
 
 - [Source](https://github.com/rkbkosp/cn.rkbkosp.colorosgmsprobefix)
 - [Releases](https://github.com/rkbkosp/cn.rkbkosp.colorosgmsprobefix/releases)
-- Expected [LSPosed/Xposed Modules Repo catalog](https://github.com/Xposed-Modules-Repo/cn.rkbkosp.colorosgmsprobefix): submission target only; listing/approval is not asserted.
+- [LSPosed/Xposed Modules Repo catalog](https://github.com/Xposed-Modules-Repo/cn.rkbkosp.colorosgmsprobefix): [submission #2024](https://github.com/Xposed-Modules-Repo/submission/issues/2024) approved and repository created. An installable catalog listing requires a signed APK release; repository creation alone is not listing verification.
 
 ## Behavior and boundaries
 

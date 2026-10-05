@@ -6,7 +6,7 @@
 
 - [源码](https://github.com/rkbkosp/cn.rkbkosp.colorosgmsprobefix)
 - [发布页](https://github.com/rkbkosp/cn.rkbkosp.colorosgmsprobefix/releases)
-- 预期 [LSPosed/Xposed Modules Repo 目录](https://github.com/Xposed-Modules-Repo/cn.rkbkosp.colorosgmsprobefix)：仅为提交目标，不代表已收录或获批。
+- [LSPosed/Xposed Modules Repo 目录](https://github.com/Xposed-Modules-Repo/cn.rkbkosp.colorosgmsprobefix)：[申请 #2024](https://github.com/Xposed-Modules-Repo/submission/issues/2024) 已批准并创建仓库。可安装目录条目还需要签名 APK Release；仓库创建不等于条目已上线验证。
 
 ## 功能与边界
 
