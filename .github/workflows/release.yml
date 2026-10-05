@@ -1,0 +1,116 @@
+name: Signed release
+
+on:
+  push:
+    tags: ['*-*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-35 build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - name: Check release tag and prepare changelog notes
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+
+          source = Path('app/build.gradle').read_text(encoding='utf-8')
+          codes = re.findall(r'^\s*versionCode\s+(?:=\s*)?([0-9]+)\s*(?://[^\n]*)?$', source, re.MULTILINE)
+          names = re.findall(r'''^\s*versionName\s+(?:=\s*)?(["'])([0-9A-Za-z.+_-]+)\1\s*(?://[^\n]*)?$''', source, re.MULTILINE)
+          if len(codes) != 1 or len(names) != 1:
+              raise SystemExit('Expected one literal versionCode and versionName in app/build.gradle')
+          version_name = names[0][1]
+          expected_tag = f'{codes[0]}-{version_name}'
+          if os.environ['GITHUB_REF_NAME'] != expected_tag:
+              raise SystemExit(f'Tag must match {expected_tag} from app/build.gradle')
+
+          changelog = Path('CHANGELOG.md').read_text(encoding='utf-8')
+          escaped_version = re.escape(version_name)
+          heading = re.search(rf'^##[ \t]+(?:\[{escaped_version}\]|{escaped_version})(?=[ \t]|$)[^\n]*\n', changelog, re.MULTILINE)
+          if heading is None:
+              raise SystemExit(f'CHANGELOG.md has no release section for {version_name}')
+          remaining = changelog[heading.end():]
+          next_heading = re.search(r'^##[ \t]+', remaining, re.MULTILINE)
+          notes = remaining[:next_heading.start()] if next_heading else remaining
+          if not notes.strip():
+              raise SystemExit(f'CHANGELOG.md release section for {version_name} is empty')
+          notes_path = Path(os.environ['RUNNER_TEMP']) / 'coloros-gms-probe-fix-release-notes.md'
+          notes_path.write_text(notes.strip() + '\n', encoding='utf-8')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write(f'version_name={version_name}\n')
+              output.write(f'notes_file={notes_path}\n')
+          PY
+      - name: Build unsigned release APK
+        run: ./gradlew --no-daemon :app:assembleRelease
+      - name: Sign and verify APK
+        env:
+          GMS_PROBE_KEYSTORE_BASE64: ${{ secrets.GMS_PROBE_KEYSTORE_BASE64 }}
+          GMS_PROBE_KEYSTORE_PASSWORD: ${{ secrets.GMS_PROBE_KEYSTORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          : "${GMS_PROBE_KEYSTORE_BASE64:?Missing GMS_PROBE_KEYSTORE_BASE64 repository secret}"
+          : "${GMS_PROBE_KEYSTORE_PASSWORD:?Missing GMS_PROBE_KEYSTORE_PASSWORD repository secret}"
+          umask 077
+          keystore_path="$RUNNER_TEMP/coloros-gms-probe-fix-release.p12"
+          trap 'rm -f "$keystore_path"' EXIT
+          printf '%s' "$GMS_PROBE_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          unsigned_apk="app/build/outputs/apk/release/app-release-unsigned.apk"
+          signed_apk="app/build/outputs/apk/release/ColorOSGmsProbeFix-${GITHUB_REF_NAME}.apk"
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$apksigner" sign \
+            --ks "$keystore_path" \
+            --ks-type PKCS12 \
+            --ks-key-alias rkbkosp \
+            --ks-pass env:GMS_PROBE_KEYSTORE_PASSWORD \
+            --key-pass env:GMS_PROBE_KEYSTORE_PASSWORD \
+            --out "$signed_apk" \
+            "$unsigned_apk"
+          verification=$("$apksigner" verify --verbose --print-certs "$signed_apk")
+          printf '%s\n' "$verification"
+          actual_fingerprint=''
+          while IFS= read -r line; do
+            if [[ "$line" == 'Signer #1 certificate SHA-256 digest: '* ]]; then
+              actual_fingerprint="${line##*: }"
+              actual_fingerprint="${actual_fingerprint,,}"
+            fi
+          done <<< "$verification"
+          expected_fingerprint='59ea4ac3a16001cf66899275068c39c4ae5fbeab74537305a8bb7f5f51063263'
+          if [[ "$actual_fingerprint" != "$expected_fingerprint" ]]; then
+            echo "Unexpected signing certificate: $actual_fingerprint" >&2
+            exit 1
+          fi
+          (cd "$(dirname "$signed_apk")" && sha256sum "$(basename "$signed_apk")" > SHA256SUMS)
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          RELEASE_NOTES: ${{ steps.version.outputs.notes_file }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" \
+            "app/build/outputs/apk/release/ColorOSGmsProbeFix-${GITHUB_REF_NAME}.apk" \
+            "app/build/outputs/apk/release/SHA256SUMS" \
+            --verify-tag \
+            --title "ColorOS GMS Probe Fix ${VERSION_NAME}" \
+            --notes-file "$RELEASE_NOTES"

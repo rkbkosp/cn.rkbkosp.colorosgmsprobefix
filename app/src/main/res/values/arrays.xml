@@ -1,0 +1,6 @@
+<resources>
+    <string-array name="xposed_scope">
+        <item>com.oplus.battery</item>
+        <item>com.oplus.athena</item>
+    </string-array>
+</resources>

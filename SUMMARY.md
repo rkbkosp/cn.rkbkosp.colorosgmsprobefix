@@ -1,0 +1,1 @@
+Lets ColorOS probe Google through the local HTTP proxy at 127.0.0.1:7890. Only real HTTP 204 yields success; other outcomes retain original detection. Scope: com.oplus.battery and com.oplus.athena; hooks run only in Athena. Firmware-specific Xposed API 82 module.
